@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vision AI: Editable PPTX Generator</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- PDF.js & PptxGenJS Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/gitbrent/PptxGenJS@3.12.0/dist/pptxgen.bundle.js"></script>
+
+    <style>
+        @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+        body { font-family: 'Pretendard', sans-serif; }
+        
+        /* AI Processing Animation */
+        .step-item { transition: all 0.3s ease; opacity: 0.4; }
+        .step-item.active { opacity: 1; transform: scale(1.05); font-weight: bold; color: #2563EB; }
+        .step-item.completed { opacity: 1; color: #059669; }
+        
+        .pulse-ring {
+            position: absolute;
+            width: 100%; height: 100%;
+            border-radius: 50%;
+            animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+        }
+        @keyframes pulse-ring {
+            0% { transform: scale(0.8); box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.7); }
+            70% { transform: scale(1.1); box-shadow: 0 0 0 10px rgba(37, 99, 235, 0); }
+            100% { transform: scale(0.8); box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen flex flex-col items-center justify-center p-4">
+
+    <div class="bg-white w-full max-w-2xl rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
+        
+        <!-- Header -->
+        <div class="bg-white p-6 border-b border-slate-100 flex items-center justify-between">
+            <div>
+                <h1 class="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                    <i class="fa-solid fa-brain text-blue-600"></i> Vision AI Converter
+                </h1>
+                <p class="text-slate-500 text-xs mt-1">PDF Parsing • Layout Analysis • Editable PPTX</p>
+            </div>
+            <div class="text-right">
+                <span class="bg-blue-100 text-blue-700 text-xs px-3 py-1 rounded-full font-bold">Pro Edition</span>
+            </div>
+        </div>
+
+        <div class="p-8">
+            
+            <!-- Upload Area -->
+            <div id="dropZone" class="border-3 border-dashed border-slate-300 rounded-xl p-10 text-center cursor-pointer transition-all hover:border-blue-500 hover:bg-blue-50 group bg-slate-50 relative">
+                <input type="file" id="fileInput" accept="application/pdf" class="hidden">
+                
+                <div id="uploadPrompt">
+                    <div class="w-20 h-20 bg-white text-blue-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-md group-hover:scale-110 transition-transform">
+                        <i class="fa-solid fa-cloud-arrow-up text-3xl"></i>
+                    </div>
+                    <p class="text-slate-700 font-bold text-lg">PDF 파일을 업로드하세요</p>
+                    <p class="text-slate-400 text-sm mt-2">문자 수정 가능한 PPTX로 변환합니다</p>
+                </div>
+
+                <div id="fileInfo" class="hidden">
+                    <div class="flex flex-col items-center">
+                        <i class="fa-solid fa-file-pdf text-red-500 text-4xl mb-3"></i>
+                        <p id="fileName" class="text-slate-800 font-bold text-lg truncate max-w-md">filename.pdf</p>
+                        <p id="pageCount" class="text-slate-500 text-sm mt-1">분석 대기 중...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI Process Steps (Hidden Initially) -->
+            <div id="processContainer" class="hidden mt-8 space-y-4">
+                <!-- Step 1 -->
+                <div id="step1" class="step-item flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center icon-box transition-colors">
+                        <i class="fa-solid fa-file-import text-sm"></i>
+                    </div>
+                    <div class="flex-1">
+                        <p class="text-sm font-medium">PDF Parsing</p>
+                        <p class="text-xs text-slate-400">문서 구조 및 리소스 추출</p>
+                    </div>
+                    <i class="fa-solid fa-check text-green-500 opacity-0 check-icon"></i>
+                </div>
+                <!-- Step 2 -->
+                <div id="step2" class="step-item flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center icon-box transition-colors">
+                        <i class="fa-solid fa-microchip text-sm"></i>
+                    </div>
+                    <div class="flex-1">
+                        <p class="text-sm font-medium">AI Layout Analysis</p>
+                        <p class="text-xs text-slate-400">텍스트 좌표 분석 및 라인 그룹화</p>
+                    </div>
+                    <i class="fa-solid fa-check text-green-500 opacity-0 check-icon"></i>
+                </div>
+                <!-- Step 3 -->
+                <div id="step3" class="step-item flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center icon-box transition-colors">
+                        <i class="fa-solid fa-file-powerpoint text-sm"></i>
+                    </div>
+                    <div class="flex-1">
+                        <p class="text-sm font-medium">Generating Editable PPTX</p>
+                        <p class="text-xs text-slate-400">화이트 패치(White Patch) 적용 및 파일 생성</p>
+                    </div>
+                    <i class="fa-solid fa-check text-green-500 opacity-0 check-icon"></i>
+                </div>
+
+                <!-- Progress Bar -->
+                <div class="w-full bg-slate-200 rounded-full h-2 mt-4 overflow-hidden">
+                    <div id="progressBar" class="bg-blue-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                </div>
+                <p id="progressText" class="text-center text-xs text-slate-500 mt-1">대기 중...</p>
+            </div>
+
+            <!-- Action Buttons -->
+            <button id="convertBtn" class="w-full mt-6 bg-slate-900 hover:bg-black text-white font-bold py-4 px-6 rounded-xl transition-all shadow-lg hover:shadow-xl hidden flex items-center justify-center gap-2 text-lg">
+                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                <span>변환 시작 (AI Processing)</span>
+            </button>
+            
+            <button id="resetBtn" class="w-full mt-6 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold py-3 px-6 rounded-xl transition-all hidden">
+                <i class="fa-solid fa-rotate-right mr-2"></i>새로운 파일 변환
+            </button>
+
+        </div>
+    </div>
+
+    <script>
+        // PDF.js Worker Setup
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+
+        // DOM Elements
+        const els = {
+            dropZone: document.getElementById('dropZone'),
+            fileInput: document.getElementById('fileInput'),
+            uploadPrompt: document.getElementById('uploadPrompt'),
+            fileInfo: document.getElementById('fileInfo'),
+            fileName: document.getElementById('fileName'),
+            pageCount: document.getElementById('pageCount'),
+            convertBtn: document.getElementById('convertBtn'),
+            processContainer: document.getElementById('processContainer'),
+            steps: [document.getElementById('step1'), document.getElementById('step2'), document.getElementById('step3')],
+            progressBar: document.getElementById('progressBar'),
+            progressText: document.getElementById('progressText'),
+            resetBtn: document.getElementById('resetBtn')
+        };
+
+        let state = { file: null, pdfDoc: null };
+
+        // 1. Event Listeners Setup
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(e => {
+            els.dropZone.addEventListener(e, ev => { ev.preventDefault(); ev.stopPropagation(); });
+        });
+        ['dragenter', 'dragover'].forEach(e => els.dropZone.classList.add('border-blue-500', 'bg-blue-50'));
+        ['dragleave', 'drop'].forEach(e => els.dropZone.classList.remove('border-blue-500', 'bg-blue-50'));
+        
+        els.dropZone.addEventListener('drop', (e) => handleFile(e.dataTransfer.files[0]));
+        els.dropZone.addEventListener('click', () => els.fileInput.click());
+        els.fileInput.addEventListener('change', (e) => handleFile(e.target.files[0]));
+        els.convertBtn.addEventListener('click', startAIProcessing);
+        els.resetBtn.addEventListener('click', () => location.reload());
+
+        // 2. File Handling
+        async function handleFile(file) {
+            if (!file || file.type !== 'application/pdf') return alert('PDF 파일만 가능합니다.');
+            state.file = file;
+            els.uploadPrompt.classList.add('hidden');
+            els.fileInfo.classList.remove('hidden');
+            els.fileName.textContent = file.name;
+            els.pageCount.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin text-blue-500"></i> 문서 스캔 중...';
+
+            try {
+                const ab = await file.arrayBuffer();
+                state.pdfDoc = await pdfjsLib.getDocument(ab).promise;
+                els.pageCount.textContent = `총 ${state.pdfDoc.numPages} 페이지 | 변환 준비 완료`;
+                els.convertBtn.classList.remove('hidden');
+            } catch (e) {
+                alert('파일을 분석할 수 없습니다. 암호가 걸려있는지 확인하세요.');
+                location.reload();
+            }
+        }
+
+        // 3. UI Update Helpers (Step Visualization)
+        function updateStep(stepIndex, status) {
+            const step = els.steps[stepIndex];
+            const iconBox = step.querySelector('.icon-box');
+            const checkIcon = step.querySelector('.check-icon');
+
+            if (status === 'active') {
+                step.classList.add('active');
+                step.classList.remove('completed');
+                iconBox.classList.remove('bg-slate-200');
+                iconBox.classList.add('bg-blue-100', 'text-blue-600');
+                // Add pulse ring effect dynamically
+                const ring = document.createElement('div');
+                ring.className = 'pulse-ring';
+                iconBox.appendChild(ring);
+            } else if (status === 'completed') {
+                step.classList.remove('active');
+                step.classList.add('completed');
+                iconBox.classList.remove('bg-blue-100', 'text-blue-600');
+                iconBox.classList.add('bg-green-100', 'text-green-600');
+                // Remove pulse ring
+                const ring = iconBox.querySelector('.pulse-ring');
+                if (ring) ring.remove();
+                
+                checkIcon.classList.remove('opacity-0');
+            }
+        }
+
+        // 4. Main Conversion Logic
+        async function startAIProcessing() {
+            if (!state.pdfDoc) return;
+            
+            els.convertBtn.classList.add('hidden');
+            els.processContainer.classList.remove('hidden');
+
+            try {
+                // Initialize Generator
+                const pptx = new PptxGenJS();
+                pptx.layout = 'LAYOUT_16x9'; 
+                const SLIDE_W = 10; 
+                const SLIDE_H = 5.625;
+
+                // Step 1: PDF Parsing
+                updateStep(0, 'active');
+                await new Promise(r => setTimeout(r, 600)); // Visual delay
+                updateStep(0, 'completed');
+
+                for (let i = 1; i <= state.pdfDoc.numPages; i++) {
+                    const pageNum = i;
+                    const total = state.pdfDoc.numPages;
+                    
+                    // Update Progress Bar
+                    const pct = Math.round((i / total) * 100);
+                    els.progressBar.style.width = `${pct}%`;
+                    els.progressText.textContent = `Page ${i} / ${total} 처리 중...`;
+
+                    // --- Processing Page ---
+                    const page = await state.pdfDoc.getPage(i);
+                    const viewport = page.getViewport({ scale: 2.0 });
+
+                    // Step 2: AI Layout Analysis (Simulated Per Page)
+                    if (i === 1) updateStep(1, 'active');
+                    
+                    // Render Background (High-Res)
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = viewport.width;
+                    canvas.height = viewport.height;
+                    await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+                    const imgData = canvas.toDataURL('image/png');
+
+                    // Geometry Calculations
+                    const imgRatio = viewport.width / viewport.height;
+                    const slideRatio = SLIDE_W / SLIDE_H;
+                    let fw, fh, fx, fy, scaleFactor;
+
+                    if (imgRatio >= slideRatio) {
+                        fw = SLIDE_W; fh = SLIDE_W / imgRatio;
+                        fx = 0; fy = (SLIDE_H - fh) / 2;
+                        scaleFactor = fw / (viewport.width / 2.0); 
+                    } else {
+                        fh = SLIDE_H; fw = SLIDE_H * imgRatio;
+                        fx = (SLIDE_W - fw) / 2; fy = 0;
+                        scaleFactor = fh / (viewport.height / 2.0);
+                    }
+
+                    // Step 3: Generating Slide
+                    if (i === 1) updateStep(2, 'active');
+
+                    const slide = pptx.addSlide();
+                    slide.addImage({ data: imgData, x: fx, y: fy, w: fw, h: fh });
+
+                    // --- AI Text Overlay Logic (White Patch) ---
+                    const textContent = await page.getTextContent();
+                    const lines = {};
+                    
+                    // Grouping Logic (Layout Analysis)
+                    textContent.items.forEach(item => {
+                        const y = Math.round(item.transform[5]); 
+                        if (!lines[y]) lines[y] = [];
+                        lines[y].push(item);
+                    });
+
+                    Object.keys(lines).forEach(yKey => {
+                        const lineItems = lines[yKey];
+                        lineItems.sort((a, b) => a.transform[4] - b.transform[4]);
+                        
+                        const textStr = lineItems.map(it => it.str).join(' ');
+                        if (!textStr.trim()) return;
+
+                        const first = lineItems[0];
+                        const pdfX = first.transform[4];
+                        const pdfY = first.transform[5];
+                        const pdfFontSize = Math.sqrt(first.transform[0] * first.transform[0]);
+                        
+                        // Coordinate Transformation
+                        const pptX = fx + (pdfX * scaleFactor);
+                        // Y Correction for PPT/Google Slides
+                        const pptY = fy + ((viewport.height/2.0 - pdfY) * scaleFactor) - (pdfFontSize * scaleFactor * 0.9);
+                        
+                        let totalWidthPt = 0;
+                        lineItems.forEach(it => totalWidthPt += it.width);
+                        const pptW = (totalWidthPt * scaleFactor) * 1.15; // +15% Width Safety
+
+                        // [핵심] 수정 가능한 텍스트 상자 (흰색 배경으로 원본 덮기)
+                        slide.addText(textStr, {
+                            x: pptX,
+                            y: pptY,
+                            w: pptW,
+                            h: (pdfFontSize * scaleFactor * 1.6),
+                            fontSize: Math.max(8, pdfFontSize * scaleFactor * 0.75),
+                            color: '000000',
+                            fill: { color: 'FFFFFF' }, // White Patch
+                            fontFace: 'Arial',       // Safe Font
+                            align: 'left',
+                            valign: 'middle',
+                            margin: 1
+                        });
+                    });
+                }
+
+                // Completion
+                updateStep(1, 'completed');
+                updateStep(2, 'completed');
+                els.progressText.textContent = "변환 완료! 파일 생성 중...";
+
+                const saveName = `VisionAI_Editable_${state.file.name.replace(/\.pdf$/i, '')}`;
+                await pptx.writeFile({ fileName: saveName });
+
+                els.convertBtn.classList.add('hidden');
+                els.resetBtn.classList.remove('hidden');
+                els.progressText.textContent = "다운로드 완료. 폴더를 확인하세요.";
+
+            } catch (err) {
+                console.error(err);
+                alert('오류 발생: ' + err.message);
+                location.reload();
+            }
+        }
+    </script>
+</body>
+</html>
